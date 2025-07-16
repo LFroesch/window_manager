@@ -33,6 +33,9 @@ class WindowResizerTool:
         self.selected_windows = []
         self.window_groups = {}  # Group windows by application
         
+        # Collapsible groups state
+        self.collapsed_groups = {}
+        
         self.create_widgets()
         self.refresh_windows()
     
@@ -234,7 +237,7 @@ class WindowResizerTool:
         # Main container with padding
         main_frame = ctk.CTkFrame(self.root)
         main_frame.grid(row=0, column=0, sticky="nsew", padx=15, pady=15)
-        main_frame.grid_rowconfigure(1, weight=1)  # Make window list expandable
+        main_frame.grid_rowconfigure(2, weight=1)  # Make window list expandable
         main_frame.grid_columnconfigure(0, weight=1)
         
         # Title with improved styling
@@ -242,21 +245,104 @@ class WindowResizerTool:
                                  font=ctk.CTkFont(size=28, weight="bold"))
         title_label.grid(row=0, column=0, pady=(10, 20), sticky="ew")
         
-        # Create notebook for tabbed interface
+        # Layouts section (collapsible)
+        self.create_layouts_section(main_frame)
+        
+        # Create notebook for tabbed interface (only 2 tabs now)
         self.notebook = ctk.CTkTabview(main_frame)
-        self.notebook.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+        self.notebook.grid(row=2, column=0, sticky="nsew", padx=10, pady=5)
         
         # Windows tab
         self.windows_tab = self.notebook.add("🗂️ Windows")
         self.create_windows_tab()
         
-        # Layouts tab  
-        self.layouts_tab = self.notebook.add("💾 Layouts")
-        self.create_layouts_tab()
-        
-        # Quick Actions tab
+        # Quick Actions tab (now includes position controls)
         self.quick_tab = self.notebook.add("⚡ Quick Actions")
         self.create_quick_actions_tab()
+    
+    def create_layouts_section(self, parent):
+        """Create collapsible layouts section at top"""
+        self.layouts_frame = ctk.CTkFrame(parent)
+        self.layouts_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=5)
+        self.layouts_frame.grid_columnconfigure(0, weight=1)
+        
+        # Header with collapse/expand button
+        header_frame = ctk.CTkFrame(self.layouts_frame)
+        header_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        header_frame.grid_columnconfigure(1, weight=1)
+        
+        self.layouts_collapsed = False
+        self.layouts_toggle_btn = ctk.CTkButton(header_frame, text="▼", width=30, height=30,
+                                              command=self.toggle_layouts_section)
+        self.layouts_toggle_btn.grid(row=0, column=0, padx=5)
+        
+        layouts_title = ctk.CTkLabel(header_frame, text="💾 Smart Layout Manager", 
+                                   font=ctk.CTkFont(size=18, weight="bold"))
+        layouts_title.grid(row=0, column=1, sticky="w", padx=10)
+        
+        # Collapsible content frame
+        self.layouts_content = ctk.CTkFrame(self.layouts_frame)
+        self.layouts_content.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
+        self.layouts_content.grid_columnconfigure(0, weight=1)
+        
+        # Layout controls
+        controls_frame = ctk.CTkFrame(self.layouts_content)
+        controls_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        
+        # Layout name input
+        name_frame = ctk.CTkFrame(controls_frame)
+        name_frame.pack(pady=8)
+        
+        ctk.CTkLabel(name_frame, text="Layout Name:", font=ctk.CTkFont(weight="bold")).pack(side="left", padx=8)
+        self.layout_name_entry = ctk.CTkEntry(name_frame, width=200, placeholder_text="Enter layout name...")
+        self.layout_name_entry.pack(side="left", padx=8)
+        
+        # Action buttons
+        btn_frame = ctk.CTkFrame(controls_frame)
+        btn_frame.pack(pady=8)
+        
+        ctk.CTkButton(btn_frame, text="💾 Save Layout", command=self.save_layout, 
+                     width=140, height=35).pack(side="left", padx=5)
+        ctk.CTkButton(btn_frame, text="📂 Load Layout", command=self.show_load_layout_dialog, 
+                     width=140, height=35).pack(side="left", padx=5)
+        ctk.CTkButton(btn_frame, text="🗑️ Delete Layout", command=self.show_delete_layout_dialog, 
+                     width=140, height=35).pack(side="left", padx=5)
+        
+        # Matching threshold
+        threshold_frame = ctk.CTkFrame(controls_frame)
+        threshold_frame.pack(pady=10)
+        
+        ctk.CTkLabel(threshold_frame, text="Smart Matching Sensitivity:", 
+                    font=ctk.CTkFont(weight="bold")).pack(side="left", padx=10)
+        self.match_threshold = ctk.CTkSlider(threshold_frame, from_=10, to=80, number_of_steps=14)
+        self.match_threshold.set(40)
+        self.match_threshold.pack(side="left", padx=10)
+        
+        self.threshold_label = ctk.CTkLabel(threshold_frame, text="40%")
+        self.threshold_label.pack(side="left", padx=5)
+        self.match_threshold.configure(command=self.update_threshold_label)
+        
+        # Layouts list
+        list_frame = ctk.CTkFrame(self.layouts_content)
+        list_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=10)
+        list_frame.grid_rowconfigure(0, weight=1)
+        list_frame.grid_columnconfigure(0, weight=1)
+        
+        self.layouts_listbox = ctk.CTkScrollableFrame(list_frame, height=150)
+        self.layouts_listbox.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        
+        self.refresh_layouts_display()
+    
+    def toggle_layouts_section(self):
+        """Toggle the layouts section visibility"""
+        self.layouts_collapsed = not self.layouts_collapsed
+        
+        if self.layouts_collapsed:
+            self.layouts_content.grid_remove()
+            self.layouts_toggle_btn.configure(text="▶")
+        else:
+            self.layouts_content.grid()
+            self.layouts_toggle_btn.configure(text="▼")
     
     def create_windows_tab(self):
         """Create the windows management tab with improved UI"""
@@ -301,20 +387,28 @@ class WindowResizerTool:
         self.selection_label.grid(row=0, column=1, padx=10, pady=5, sticky="e")
         
         # Scrollable window list with better height
-        self.window_listbox = ctk.CTkScrollableFrame(list_frame, height=300)
+        self.window_listbox = ctk.CTkScrollableFrame(list_frame, height=400)
         self.window_listbox.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+    
+    def create_quick_actions_tab(self):
+        """Create quick actions tab with position controls included"""
+        # Configure grid
+        self.quick_tab.grid_rowconfigure(0, weight=1)
+        self.quick_tab.grid_columnconfigure(0, weight=1)
         
-        # Position controls section
-        pos_frame = ctk.CTkFrame(self.windows_tab)
-        pos_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=10)
-        pos_frame.grid_columnconfigure(0, weight=1)
+        main_quick_frame = ctk.CTkScrollableFrame(self.quick_tab)
+        main_quick_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        
+        # Position & Size Controls section
+        pos_frame = ctk.CTkFrame(main_quick_frame)
+        pos_frame.pack(fill="x", padx=10, pady=10)
         
         ctk.CTkLabel(pos_frame, text="📐 Position & Size Controls", 
-                    font=ctk.CTkFont(size=18, weight="bold")).grid(row=0, column=0, pady=15)
+                    font=ctk.CTkFont(size=18, weight="bold")).pack(pady=15)
         
         # Input fields in improved grid layout
         input_frame = ctk.CTkFrame(pos_frame)
-        input_frame.grid(row=1, column=0, padx=20, pady=10)
+        input_frame.pack(pady=10)
         
         # X, Y inputs
         xy_frame = ctk.CTkFrame(input_frame)
@@ -344,19 +438,11 @@ class WindowResizerTool:
         apply_btn = ctk.CTkButton(pos_frame, text="✨ Apply Position", 
                                 command=self.apply_position, height=45, 
                                 font=ctk.CTkFont(size=14, weight="bold"))
-        apply_btn.grid(row=2, column=0, pady=15)
+        apply_btn.pack(pady=15)
         
-    def create_quick_actions_tab(self):
-        """Create quick actions tab with better organization"""
-        # Configure grid
-        self.quick_tab.grid_rowconfigure(0, weight=1)
-        self.quick_tab.grid_columnconfigure(0, weight=1)
-        
-        main_quick_frame = ctk.CTkFrame(self.quick_tab)
-        main_quick_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-        
+        # Quick position presets section
         ctk.CTkLabel(main_quick_frame, text="⚡ Quick Position Presets", 
-                    font=ctk.CTkFont(size=20, weight="bold")).pack(pady=20)
+                    font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(30, 20))
         
         # Quick position buttons in organized grid
         quick_btn_frame = ctk.CTkFrame(main_quick_frame)
@@ -391,67 +477,6 @@ class WindowResizerTool:
         ctk.CTkButton(row3, text="🔄 Minimize", command=lambda: self.quick_position("minimize"), **btn_style).pack(side="left", padx=8)
         ctk.CTkButton(row3, text="📺 Restore", command=lambda: self.quick_position("restore"), **btn_style).pack(side="left", padx=8)
     
-    def create_layouts_tab(self):
-        """Create layouts management tab"""
-        # Configure grid
-        self.layouts_tab.grid_rowconfigure(1, weight=1)
-        self.layouts_tab.grid_columnconfigure(0, weight=1)
-        
-        # Header
-        header_frame = ctk.CTkFrame(self.layouts_tab)
-        header_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        
-        ctk.CTkLabel(header_frame, text="💾 Smart Layout Manager", 
-                    font=ctk.CTkFont(size=20, weight="bold")).pack(pady=15)
-        
-        # Layout controls
-        controls_frame = ctk.CTkFrame(header_frame)
-        controls_frame.pack(pady=10)
-        
-        # Layout name input
-        name_frame = ctk.CTkFrame(controls_frame)
-        name_frame.pack(pady=8)
-        
-        ctk.CTkLabel(name_frame, text="Layout Name:", font=ctk.CTkFont(weight="bold")).pack(side="left", padx=8)
-        self.layout_name_entry = ctk.CTkEntry(name_frame, width=200, placeholder_text="Enter layout name...")
-        self.layout_name_entry.pack(side="left", padx=8)
-        
-        # Action buttons
-        btn_frame = ctk.CTkFrame(controls_frame)
-        btn_frame.pack(pady=8)
-        
-        ctk.CTkButton(btn_frame, text="💾 Save Layout", command=self.save_layout, 
-                     width=140, height=35).pack(side="left", padx=5)
-        ctk.CTkButton(btn_frame, text="📂 Load Layout", command=self.show_load_layout_dialog, 
-                     width=140, height=35).pack(side="left", padx=5)
-        ctk.CTkButton(btn_frame, text="🗑️ Delete Layout", command=self.show_delete_layout_dialog, 
-                     width=140, height=35).pack(side="left", padx=5)
-        
-        # Matching threshold
-        threshold_frame = ctk.CTkFrame(header_frame)
-        threshold_frame.pack(pady=10)
-        
-        ctk.CTkLabel(threshold_frame, text="Smart Matching Sensitivity:", 
-                    font=ctk.CTkFont(weight="bold")).pack(side="left", padx=10)
-        self.match_threshold = ctk.CTkSlider(threshold_frame, from_=10, to=80, number_of_steps=14)
-        self.match_threshold.set(40)
-        self.match_threshold.pack(side="left", padx=10)
-        
-        self.threshold_label = ctk.CTkLabel(threshold_frame, text="40%")
-        self.threshold_label.pack(side="left", padx=5)
-        self.match_threshold.configure(command=self.update_threshold_label)
-        
-        # Layouts list
-        list_frame = ctk.CTkFrame(self.layouts_tab)
-        list_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
-        list_frame.grid_rowconfigure(0, weight=1)
-        list_frame.grid_columnconfigure(0, weight=1)
-        
-        self.layouts_listbox = ctk.CTkScrollableFrame(list_frame)
-        self.layouts_listbox.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-        
-        self.refresh_layouts_display()
-    
     def get_windows(self):
         """Get all visible windows with comprehensive info"""
         windows = []
@@ -465,6 +490,11 @@ class WindowResizerTool:
         
         win32gui.EnumWindows(enum_windows_callback, None)
         return windows
+    
+    def toggle_group_collapse(self, app_type):
+        """Toggle collapse state for an app group"""
+        self.collapsed_groups[app_type] = not self.collapsed_groups.get(app_type, False)
+        self.refresh_windows(self.search_entry.get().lower() if hasattr(self, 'search_entry') else "")
     
     def refresh_windows(self, search_filter=""):
         """Refresh the window list with detailed information and grouping"""
@@ -494,9 +524,16 @@ class WindowResizerTool:
             if len(app_windows) == 0:
                 continue
                 
-            # App group header
+            # App group header with collapse button
             group_header = ctk.CTkFrame(self.window_listbox)
             group_header.pack(fill="x", padx=5, pady=(10, 5))
+            
+            # Collapse/expand button
+            is_collapsed = self.collapsed_groups.get(app_type, False)
+            collapse_btn = ctk.CTkButton(group_header, text="▶" if is_collapsed else "▼", 
+                                       width=30, height=30,
+                                       command=lambda at=app_type: self.toggle_group_collapse(at))
+            collapse_btn.pack(side="left", padx=10, pady=8)
             
             # App icon and name
             app_display_name = self.get_app_display_name(app_type)
@@ -505,16 +542,17 @@ class WindowResizerTool:
             header_label = ctk.CTkLabel(group_header, 
                                       text=f"{app_display_name} ({app_count})",
                                       font=ctk.CTkFont(size=14, weight="bold"))
-            header_label.pack(side="left", padx=15, pady=8)
+            header_label.pack(side="left", padx=5, pady=8)
             
             # Group select button
             group_select_btn = ctk.CTkButton(group_header, text="Select All", width=80, height=25,
                                            command=lambda windows=app_windows: self.select_app_group(windows))
             group_select_btn.pack(side="right", padx=15, pady=8)
             
-            # Individual windows in this group
-            for i, window_info in enumerate(app_windows):
-                self.create_window_entry(window_info, i, len(app_windows))
+            # Individual windows in this group (only if not collapsed)
+            if not is_collapsed:
+                for i, window_info in enumerate(app_windows):
+                    self.create_window_entry(window_info, i, len(app_windows))
         
         # Update selection label
         try:

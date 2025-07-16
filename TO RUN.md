@@ -3,7 +3,7 @@
 ## Copy files to Windows directory
 
 ```bash
-cp -r /home/lucas/projects/active/window_manager/* /mnt/c/Users/lucas/Desktop/WindowsBuildsFromWSL/window-manager/
+cp -r /home/lucas/projects/active/daily_use/window_manager/* /mnt/c/Users/lucas/Desktop/WindowsBuildsFromWSL/window-manager/
 ```
 
 ## Then run on Windows
